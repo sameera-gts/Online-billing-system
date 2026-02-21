@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Laptop Billing System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body {
+    margin:0;
+    font-family:"Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    display:flex;
+    min-height:100vh;
+  }
+  .container { display:flex; width:100%; max-width:1200px; margin:auto; padding:20px; gap:20px; }
+
+  /* Left menu */
+  .menu { flex:1; background:#fff; border-radius:14px; padding:20px; box-shadow:0 10px 25px rgba(0,0,0,0.15); max-width:350px; }
+  .menu h2 { color:#4f46e5; text-align:center; margin-top:0; }
+  .menu h3 { color:#333; text-align:center; margin:15px 0 5px 0; }
+  .menu .table-header, .menu li { display:flex; justify-content:space-between; padding:5px 10px; }
+  .menu .table-header { font-weight:bold; border-bottom:1px solid #333; }
+  .menu ul { list-style:none; padding:0; max-height:400px; overflow-y:auto; }
+  .menu li { cursor:pointer; border-bottom:1px solid #eee; transition:0.2s; }
+  .menu li:hover { background:#f3f4ff; }
+
+  /* Right billing */
+  .billing { flex:2; background:#fff; border-radius:14px; padding:20px; box-shadow:0 10px 25px rgba(0,0,0,0.15); }
+  .billing h1 { text-align:center; color:#4f46e5; margin-top:0; }
+  input, button { padding:12px; border-radius:10px; border:1px solid #ddd; margin-top:10px; width:100%; font-size:15px; }
+  input[type="text"], input[type="number"] { width:100%; }
+  input:focus { border-color:#4f46e5; outline:none; box-shadow:0 0 6px rgba(79,70,229,0.3); }
+  input::-webkit-inner-spin-button, input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  button { background:#4f46e5; color:white; border:none; cursor:pointer; font-weight:bold; }
+  button:hover { background:#3730a3; }
+  .card { background:#f9fafb; border-radius:12px; padding:15px; margin-top:15px; border:1px solid #e5e7eb; }
+  #billList .bill-item { background:#eef2ff; padding:10px; margin:8px 0; border-radius:8px; }
+  #grandTotal { margin-top:20px; font-size:18px; font-weight:bold; text-align:center; color:#10b981; }
+  .status { text-align:center; margin-top:5px; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <!-- LEFT: Menu -->
+  <div class="menu">
+    <h2>👋 Welcome!</h2>
+    <p style="text-align:center;">Available laptops in our store:</p>
+    <h3>Products Menu</h3>
+    <div class="table-header">
+      <span>ID</span><span>Product</span><span>Price</span>
+    </div>
+    <ul id="productMenu"></ul>
+  </div>
+
+  <!-- RIGHT: Billing -->
+  <div class="billing">
+    <h1>🛒 Billing System</h1>
+    <!-- search section visible initially -->
+    <div id="searchSection">
+      <input type="text" id="searchInput" placeholder="Enter Product ID or Name">
+      <button id="btnSearch">Search</button>
+    </div>
+    <p id="status" class="status"></p>
+
+    <div id="productCard" class="card" style="display:none;">
+      <p><strong>ID:</strong> <span id="pId"></span></p>
+      <p><strong>Name:</strong> <span id="pName"></span></p>
+      <p><strong>Price:</strong> ₹<span id="pPrice"></span></p>
+      <input type="text" id="quantity" placeholder="Enter Quantity">
+      <button id="btnBuy">Buy</button>
+    </div>
+
+    <div id="billList"></div>
+    <button id="btnAnother" style="display:none;">Buy Another</button>
+    <button id="btnFinish" style="display:none;">Finish</button>
+    <p id="grandTotal"></p>
+  </div>
+</div>
+
+<script>
+const API_BASE = "http://localhost:8080/api/products"; 
+const productMenu = document.getElementById("productMenu");
+const searchSection = document.getElementById("searchSection");
+const searchInput = document.getElementById("searchInput");
+const statusEl = document.getElementById("status");
+const productCard = document.getElementById("productCard");
+const pId = document.getElementById("pId");
+const pName = document.getElementById("pName");
+const pPrice = document.getElementById("pPrice");
+const quantityInput = document.getElementById("quantity");
+const btnBuy = document.getElementById("btnBuy");
+const billList = document.getElementById("billList");
+const btnAnother = document.getElementById("btnAnother");
+const btnFinish = document.getElementById("btnFinish");
+const grandTotalEl = document.getElementById("grandTotal");
+const btnSearch = document.getElementById("btnSearch");
+
+let products = [];
+let billItems = [];
+let totalAmount = 0;
+let currentProduct = null;
+
+// Load products
+async function loadProducts() {
+  try {
+    const res = await fetch(API_BASE);
+    if (!res.ok) throw new Error("Failed to fetch products");
+    products = await res.json();
+    populateMenu();
+  } catch (err) {
+    console.error(err);
+    productMenu.innerHTML = "<li>No products available</li>";
+  }
+}
+
+function populateMenu() {
+  productMenu.innerHTML = "";
+  products.forEach(p => {
+    const li = document.createElement("li");
+    li.innerHTML = `<span>${p.id}</span><span>${p.name}</span><span>₹${p.price}</span>`;
+    li.onclick = () => { searchInput.value = p.id; searchProduct(); };
+    productMenu.appendChild(li);
+  });
+}
+
+function findProduct(query) {
+  if (!query) return null;
+  const id = Number(query);
+  if (!isNaN(id)) return products.find(p => p.id === id);
+  return products.find(p => p.name.toLowerCase().includes(query.toLowerCase()));
+}
+
+function searchProduct() {
+  const query = searchInput.value.trim();
+  const product = findProduct(query);
+  if (!product) {
+    statusEl.textContent = "Product not found!";
+    statusEl.className = "status error";
+    productCard.style.display = "none";
+    return;
+  }
+
+  currentProduct = product;
+  pId.textContent = product.id;
+  pName.textContent = product.name;
+  pPrice.textContent = product.price;
+  quantityInput.value = "";
+  productCard.style.display = "block";
+  statusEl.textContent = "Product loaded ✔";
+  statusEl.className = "status ok";
+
+  // Hide search bar after selecting a product
+  searchSection.style.display = "none";
+}
+
+btnSearch.addEventListener("click", searchProduct);
+searchInput.addEventListener("keydown", e => { if(e.key==="Enter") searchProduct(); });
+
+btnBuy.addEventListener("click", () => {
+  const qty = parseInt(quantityInput.value);
+  if(!currentProduct || !qty || qty<=0){ alert("Enter valid quantity"); return; }
+  const cost = currentProduct.price * qty;
+  totalAmount += cost;
+  billItems.push({name:currentProduct.name, qty, price:currentProduct.price, cost});
+  renderBillList();
+  productCard.style.display="none";
+  searchInput.value="";
+  currentProduct=null;
+
+  // Show buttons to allow next purchase
+  btnAnother.style.display="block";
+  btnFinish.style.display="block";
+});
+
+function renderBillList() {
+  billList.innerHTML = "";
+  billItems.forEach((item,index)=>{
+    const div = document.createElement("div");
+    div.className = "bill-item";
+    div.innerHTML = `${index+1}. ${item.name} — Qty: ${item.qty}, Price: ₹${item.price}, Total: ₹${item.cost}`;
+    billList.appendChild(div);
+  });
+}
+
+// When clicking Buy Another -> show search bar again
+btnAnother.addEventListener("click",()=>{
+  searchSection.style.display = "block";
+  productCard.style.display = "none";
+  searchInput.value="";
+  searchInput.focus();
+  statusEl.textContent="";
+});
+
+// Finish -> show grand total
+btnFinish.addEventListener("click",()=>{
+  grandTotalEl.textContent="Grand Total: ₹"+totalAmount;
+  searchSection.style.display = "none"; // hide search bar after finishing
+});
+
+loadProducts(); // Initialize
+</script>
+
+</body>
+</html>
